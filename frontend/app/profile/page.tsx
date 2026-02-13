@@ -2,21 +2,21 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Briefcase, 
-  Users, 
-  Mic, 
-  TrendingUp, 
-  Presentation, 
-  AlertCircle, 
-  ChevronRight, 
+import {
+  Briefcase,
+  Users,
+  Mic,
+  TrendingUp,
+  Presentation,
+  AlertCircle,
+  ChevronRight,
   ChevronDown,
   ChevronUp,
-  FileText, 
-  Upload, 
-  Clock, 
-  BarChart2, 
-  CheckCircle2, 
+  FileText,
+  Upload,
+  Clock,
+  BarChart2,
+  CheckCircle2,
   Play,
   History,
   User,
@@ -24,10 +24,13 @@ import {
   Target,
   Zap,
   X,
-  Edit3
+  Edit3,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useProfile, UserProfile, TrainingFocus } from '../../hooks/useProfile';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import { sessionApi, SessionCreate, PreparationType } from '@/lib/api';
 
 // --- Components ---
 
@@ -574,28 +577,49 @@ const ExampleModal = ({
   </div>
 );
 
-export default function ProfilePage() {
+function ProfilePageContent() {
   const router = useRouter();
-  const { profile, updateProfile, isLoaded } = useProfile();
+  const { profile, updateProfile, refreshSessions, isLoaded } = useProfile();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [accordionOpen, setAccordionOpen] = useState(false);
   const [selectedSession, setSelectedSession] = useState<any>(null);
   const [exampleModalOpen, setExampleModalOpen] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   
   // Check for development environment
   const isDev = process.env.NODE_ENV === 'development';
 
   // Prevent hydration mismatch
-  if (!isLoaded) return <div className="min-h-screen bg-slate-950" />;
+  if (!isLoaded) return <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+    <Loader2 className="w-8 h-8 text-amber-400 animate-spin" />
+  </div>;
 
-  const handleStartSession = () => {
+  const handleStartSession = async () => {
     setIsSubmitting(true);
-    // Simulate API call / transition
-    setTimeout(() => {
-      // In a real app, we'd create a session ID here
-      const sessionId = Date.now().toString();
-      router.push(`/session/${sessionId}`);
-    }, 800);
+    setError(null);
+    
+    try {
+      // Create session via API
+      const sessionData: SessionCreate = {
+        preparation_type: profile.preparationType as PreparationType,
+        meeting_subtype: profile.meetingSubtype || undefined,
+        agenda: profile.agenda || undefined,
+        tone: profile.tone,
+        role_context: profile.cvText || undefined
+      };
+
+      const session = await sessionApi.createSession(sessionData);
+      
+      // Refresh sessions list
+      await refreshSessions();
+      
+      // Navigate to session page
+      router.push(`/session/${session.session_id}`);
+    } catch (err) {
+      console.error('Failed to create session:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create session');
+      setIsSubmitting(false);
+    }
   };
 
   const toggleActivationState = () => {
@@ -803,15 +827,21 @@ export default function ProfilePage() {
       {/* Sticky Bottom CTA */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-950/90 backdrop-blur-xl border-t border-white/10 z-50">
         <div className="max-w-3xl mx-auto flex flex-col gap-3">
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-400 text-center">
+              {error}
+            </div>
+          )}
+          
           {!isActivated && (
             <p className="text-xs text-center text-slate-500 mb-1">
-              No account needed. Your data stays in this browser unless you choose to sync later.
+              Your session data is securely stored and synced to your account.
             </p>
           )}
           
           <div className="flex gap-3">
             {isActivated && (
-              <button 
+              <button
                 className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-semibold py-3.5 px-6 rounded-lg transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={profile.sessions.length === 0}
                 title={profile.sessions.length === 0 ? "Complete your first session to review it." : ""}
@@ -820,13 +850,16 @@ export default function ProfilePage() {
               </button>
             )}
             
-            <button 
+            <button
               onClick={handleStartSession}
               disabled={isSubmitting}
-              className="flex-1 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold py-3.5 px-6 rounded-lg shadow-lg shadow-amber-400/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 text-sm"
+              className="flex-1 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold py-3.5 px-6 rounded-lg shadow-lg shadow-amber-400/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
-                <span className="animate-pulse">Starting...</span>
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Creating session...</span>
+                </>
               ) : (
                 <>
                   {isActivated ? 'Start new session' : 'Start preparing'}
@@ -864,6 +897,14 @@ export default function ProfilePage() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <ProtectedRoute>
+      <ProfilePageContent />
+    </ProtectedRoute>
   );
 }
 
